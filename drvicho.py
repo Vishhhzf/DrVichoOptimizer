@@ -12,28 +12,46 @@ import random
 
 # --- CONFIGURACIÓN Y TEMA ---
 COLORS = {
-    "bg_dark": "#121212",
-    "bg_panel": "#1e1e1e",
-    "bg_hover": "#2d2d2d",
-    "accent": "#3b82f6",      # Windows Blue
+    "bg_dark": "#0a0a0a",      # Website Main BG
+    "bg_panel": "#171717",     # Website Card BG
+    "bg_hover": "#262626",
+    "accent": "#3b82f6",       # Website Accent
     "accent_hover": "#2563eb",
     "text_main": "#ffffff",
-    "text_sec": "#a1a1aa",
+    "text_sec": "#a3a3a3",
     "danger": "#ef4444",
     "warning": "#f59e0b",
     "success": "#10b981",
     "border": "#333333",
-    "toggle_off": "#444444"
+    "toggle_off": "#404040"
 }
 
 FONTS = {
-    "header": ("Segoe UI", 18, "bold"),
+    "header": ("Segoe UI", 20, "bold"),
     "subheader": ("Segoe UI", 14, "bold"),
     "body": ("Segoe UI", 10),
     "body_bold": ("Segoe UI", 10, "bold"),
     "small": ("Segoe UI", 9),
     "mono": ("Consolas", 9)
 }
+
+def set_dark_title_bar(window):
+    """
+    Forces the Windows title bar to be dark using the DwmSetWindowAttribute API.
+    Works on Windows 10 (newer builds) and Windows 11.
+    """
+    try:
+        window.update()
+        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        set_window_attribute = ctypes.windll.dwmapi.DwmSetWindowAttribute
+        get_parent = ctypes.windll.user32.GetParent
+        hwnd = get_parent(window.winfo_id())
+        rendering_policy = DWMWA_USE_IMMERSIVE_DARK_MODE
+        value = 2
+        value = ctypes.c_int(value)
+        set_window_attribute(hwnd, rendering_policy, ctypes.byref(value), ctypes.sizeof(value))
+    except Exception as e:
+        print(f"Failed to set dark title bar: {e}")
 
 # --- SISTEMA DE LOGS ---
 class Logger:
@@ -67,22 +85,53 @@ class Logger:
 # --- WIDGETS PERSONALIZADOS (CANVAS) ---
 
 class ModernButton(tk.Canvas):
-    def __init__(self, parent, text, command=None, width=200, height=40, bg_color=COLORS["accent"], text_color="#ffffff"):
+    def __init__(self, parent, text, command=None, width=200, height=45, bg_color=COLORS["accent"], text_color="#ffffff"):
         super().__init__(parent, width=width, height=height, bg=COLORS["bg_panel"], highlightthickness=0)
         self.command = command
         self.bg_color = bg_color
         self.hover_color = COLORS["accent_hover"] if bg_color == COLORS["accent"] else "#444444"
         self.text_color = text_color
         self.text = text
+        self.radius = 12 # Rounded corners
         
-        self.rect = self.create_rectangle(2, 2, width-2, height-2, fill=self.bg_color, outline="", width=0, tags="rect")
-        self.text_id = self.create_text(width/2, height/2, text=self.text, fill=self.text_color, font=FONTS["body_bold"], tags="text")
+        self.draw()
         
         self.bind("<Enter>", self.on_enter)
         self.bind("<Leave>", self.on_leave)
         self.bind("<Button-1>", self.on_click)
-        self.tag_bind("rect", "<Button-1>", self.on_click)
-        self.tag_bind("text", "<Button-1>", self.on_click)
+        
+    def round_rect(self, x1, y1, x2, y2, radius, **kwargs):
+        points = [x1+radius, y1,
+                  x1+radius, y1,
+                  x2-radius, y1,
+                  x2-radius, y1,
+                  x2, y1,
+                  x2, y1+radius,
+                  x2, y1+radius,
+                  x2, y2-radius,
+                  x2, y2-radius,
+                  x2, y2,
+                  x2-radius, y2,
+                  x2-radius, y2,
+                  x1+radius, y2,
+                  x1+radius, y2,
+                  x1, y2,
+                  x1, y2-radius,
+                  x1, y2-radius,
+                  x1, y1+radius,
+                  x1, y1+radius,
+                  x1, y1]
+        return self.create_polygon(points, **kwargs, smooth=True)
+
+    def draw(self):
+        self.delete("all")
+        # Background shape
+        self.rect = self.round_rect(2, 2, int(self['width'])-2, int(self['height'])-2, self.radius, fill=self.bg_color, outline="")
+        # Text
+        self.text_id = self.create_text(int(self['width'])/2, int(self['height'])/2, text=self.text, fill=self.text_color, font=FONTS["body_bold"])
+        
+        self.tag_bind(self.rect, "<Button-1>", self.on_click)
+        self.tag_bind(self.text_id, "<Button-1>", self.on_click)
 
     def on_enter(self, event):
         self.itemconfig(self.rect, fill=self.hover_color)
@@ -98,65 +147,58 @@ class ModernButton(tk.Canvas):
 
     def set_state(self, state):
         if state == "disabled":
-            self.itemconfig(self.rect, fill="#555555")
+            self.itemconfig(self.rect, fill="#333333")
+            self.itemconfig(self.text_id, fill="#666666")
             self.unbind("<Button-1>")
         else:
             self.itemconfig(self.rect, fill=self.bg_color)
+            self.itemconfig(self.text_id, fill=self.text_color)
             self.bind("<Button-1>", self.on_click)
 
 class CustomCheckbox(tk.Canvas):
-    def __init__(self, parent, text, variable, command=None, width=300, height=30):
+    def __init__(self, parent, text, variable, command=None, width=300, height=35):
         super().__init__(parent, width=width, height=height, bg=COLORS["bg_panel"], highlightthickness=0)
         self.variable = variable
         self.command = command
         self.text = text
         self.bg_color = COLORS["bg_panel"]
-        self.hover_color = COLORS["bg_hover"]
         
-        # Checkbox dimensions
-        self.box_size = 18
+        self.box_size = 20
         self.box_x = 5
         self.box_y = (height - self.box_size) // 2
         
-        # Draw initial state
         self.draw()
         
         self.bind("<Button-1>", self.toggle)
         self.bind("<Enter>", self.on_enter)
         self.bind("<Leave>", self.on_leave)
-        
-        # Trace variable changes to redraw
         self.variable.trace_add("write", lambda *args: self.draw())
 
     def draw(self):
         self.delete("all")
-        
-        # Background (for hover)
         self.create_rectangle(0, 0, int(self['width']), int(self['height']), fill=self.bg_color, outline="", tags="bg")
         
-        # Checkbox Box
-        color = COLORS["accent"] if self.variable.get() else ""
-        outline = COLORS["accent"] if self.variable.get() else COLORS["text_sec"]
+        # Checkbox Box (Rounded)
+        fill_color = COLORS["accent"] if self.variable.get() else ""
+        outline_color = COLORS["accent"] if self.variable.get() else COLORS["text_sec"]
         
+        # Simple rounded box simulation
         self.create_rectangle(self.box_x, self.box_y, self.box_x + self.box_size, self.box_y + self.box_size, 
-                              fill=color, outline=outline, width=2, tags="box")
+                              fill=fill_color, outline=outline_color, width=2, tags="box")
         
-        # Checkmark
         if self.variable.get():
-            self.create_line(self.box_x + 4, self.box_y + 9, self.box_x + 8, self.box_y + 13, 
-                             fill="white", width=2, tags="check")
-            self.create_line(self.box_x + 8, self.box_y + 13, self.box_x + 14, self.box_y + 5, 
-                             fill="white", width=2, tags="check")
+            self.create_line(self.box_x + 5, self.box_y + 10, self.box_x + 9, self.box_y + 14, 
+                             fill="white", width=2, tags="check", capstyle="round")
+            self.create_line(self.box_x + 9, self.box_y + 14, self.box_x + 15, self.box_y + 6, 
+                             fill="white", width=2, tags="check", capstyle="round")
             
-        # Text
-        self.create_text(self.box_x + self.box_size + 10, int(self['height'])//2, 
+        self.create_text(self.box_x + self.box_size + 15, int(self['height'])//2, 
                          text=self.text, fill=COLORS["text_main"], font=FONTS["body"], anchor="w", tags="text")
 
     def toggle(self, event=None):
         self.variable.set(not self.variable.get())
         if self.command:
             self.command()
-        self.draw()
 
     def on_enter(self, event):
         self.bg_color = COLORS["bg_hover"]
@@ -169,16 +211,15 @@ class CustomCheckbox(tk.Canvas):
         self.config(cursor="")
 
 class CustomToggle(tk.Canvas):
-    def __init__(self, parent, text, variable, command=None, width=300, height=30):
+    def __init__(self, parent, text, variable, command=None, width=300, height=35):
         super().__init__(parent, width=width, height=height, bg=COLORS["bg_panel"], highlightthickness=0)
         self.variable = variable
         self.command = command
         self.text = text
         self.bg_color = COLORS["bg_panel"]
         
-        # Toggle dimensions
-        self.toggle_w = 40
-        self.toggle_h = 20
+        self.toggle_w = 44
+        self.toggle_h = 24
         self.toggle_x = width - self.toggle_w - 10
         self.toggle_y = (height - self.toggle_h) // 2
         
@@ -187,34 +228,31 @@ class CustomToggle(tk.Canvas):
         self.bind("<Button-1>", self.toggle)
         self.bind("<Enter>", self.on_enter)
         self.bind("<Leave>", self.on_leave)
-        
         self.variable.trace_add("write", lambda *args: self.draw())
 
     def draw(self):
         self.delete("all")
-        
-        # Background (for hover)
         self.create_rectangle(0, 0, int(self['width']), int(self['height']), fill=self.bg_color, outline="", tags="bg")
         
-        # Text
         self.create_text(10, int(self['height'])//2, text=self.text, fill=COLORS["text_main"], font=FONTS["body"], anchor="w", tags="text")
         
-        # Toggle Track
+        # Track
         track_color = COLORS["accent"] if self.variable.get() else COLORS["toggle_off"]
-        self.create_oval(self.toggle_x, self.toggle_y, self.toggle_x + self.toggle_h, self.toggle_y + self.toggle_h, fill=track_color, outline="")
-        self.create_oval(self.toggle_x + self.toggle_w - self.toggle_h, self.toggle_y, self.toggle_x + self.toggle_w, self.toggle_y + self.toggle_h, fill=track_color, outline="")
-        self.create_rectangle(self.toggle_x + self.toggle_h/2, self.toggle_y, self.toggle_x + self.toggle_w - self.toggle_h/2, self.toggle_y + self.toggle_h, fill=track_color, outline="")
+        self.round_rect(self.toggle_x, self.toggle_y, self.toggle_x + self.toggle_w, self.toggle_y + self.toggle_h, 12, fill=track_color, outline="")
         
-        # Toggle Knob
+        # Knob
         knob_x = (self.toggle_x + self.toggle_w - self.toggle_h + 2) if self.variable.get() else (self.toggle_x + 2)
         self.create_oval(knob_x, self.toggle_y + 2, knob_x + self.toggle_h - 4, self.toggle_y + self.toggle_h - 2, fill="white", outline="")
+
+    def round_rect(self, x1, y1, x2, y2, radius, **kwargs):
+        points = [x1+radius, y1, x1+radius, y1, x2-radius, y1, x2-radius, y1, x2, y1, x2, y1+radius, x2, y1+radius, x2, y2-radius, x2, y2-radius, x2, y2, x2-radius, y2, x2-radius, y2, x1+radius, y2, x1+radius, y2, x1, y2, x1, y2-radius, x1, y2-radius, x1, y1+radius, x1, y1+radius, x1, y1]
+        return self.create_polygon(points, **kwargs, smooth=True)
 
     def toggle(self, event=None):
         self.variable.set(not self.variable.get())
         if self.command:
             self.command()
-        self.draw()
-        
+            
     def on_enter(self, event):
         self.bg_color = COLORS["bg_hover"]
         self.draw()
@@ -231,8 +269,12 @@ class DrVichoApp:
     def __init__(self, root):
         self.root = root
         self.root.title("DrVicho Optimizer")
-        self.root.geometry("1100x750")
+        self.root.geometry("1150x800")
         self.root.configure(bg=COLORS["bg_dark"])
+        
+        # Apply Dark Title Bar
+        set_dark_title_bar(self.root)
+        
         self.logger = Logger()
         
         self.setup_styles()
@@ -247,12 +289,20 @@ class DrVichoApp:
     def setup_styles(self):
         style = ttk.Style()
         style.theme_use('clam')
+        
+        # Configure standard colors
         style.configure("TFrame", background=COLORS["bg_panel"])
         style.configure("Main.TFrame", background=COLORS["bg_dark"])
         style.configure("Sidebar.TFrame", background=COLORS["bg_panel"])
+        
+        # Labels
         style.configure("TLabel", background=COLORS["bg_panel"], foreground=COLORS["text_main"], font=FONTS["body"])
         style.configure("Header.TLabel", background=COLORS["bg_panel"], foreground=COLORS["accent"], font=FONTS["header"])
-        style.configure("Vertical.TScrollbar", gripcount=0, background="#444", darkcolor="#444", lightcolor="#444", troughcolor=COLORS["bg_dark"], bordercolor=COLORS["bg_dark"], arrowcolor="white")
+        style.configure("SubHeader.TLabel", background=COLORS["bg_panel"], foreground=COLORS["text_sec"], font=FONTS["subheader"])
+        
+        # Scrollbar
+        style.configure("Vertical.TScrollbar", gripcount=0, background=COLORS["bg_hover"], darkcolor=COLORS["bg_dark"], lightcolor=COLORS["bg_dark"], troughcolor=COLORS["bg_panel"], bordercolor=COLORS["bg_panel"], arrowcolor=COLORS["text_sec"])
+        style.map("Vertical.TScrollbar", background=[("active", COLORS["accent"])])
 
     def create_layout(self):
         # Contenedor Principal
@@ -260,49 +310,55 @@ class DrVichoApp:
         main_container.pack(fill="both", expand=True)
 
         # Barra Lateral (Sidebar)
-        sidebar = ttk.Frame(main_container, style="Sidebar.TFrame", width=260)
-        sidebar.pack(side="left", fill="y", padx=(0, 2))
+        sidebar = ttk.Frame(main_container, style="Sidebar.TFrame", width=280)
+        sidebar.pack(side="left", fill="y", padx=(0, 0))
         sidebar.pack_propagate(False)
         
         # Logo / Título
-        ttk.Label(sidebar, text="DrVicho", style="Header.TLabel").pack(pady=(20, 5), padx=20, anchor="w")
-        ttk.Label(sidebar, text="Optimizer", font=("Segoe UI", 12), foreground=COLORS["text_sec"], background=COLORS["bg_panel"]).pack(pady=(0, 20), padx=20, anchor="w")
+        title_frame = ttk.Frame(sidebar, style="Sidebar.TFrame")
+        title_frame.pack(pady=(40, 10), padx=30, anchor="w")
+        ttk.Label(title_frame, text="DrVicho", style="Header.TLabel").pack(anchor="w")
+        ttk.Label(title_frame, text="Optimizer v2.0", font=("Segoe UI", 11), foreground=COLORS["text_sec"], background=COLORS["bg_panel"]).pack(anchor="w")
         
         # Botones Presets
-        ttk.Label(sidebar, text="PRESETS", font=("Segoe UI", 10, "bold"), foreground=COLORS["text_sec"], background=COLORS["bg_panel"]).pack(pady=(10, 5), padx=20, anchor="w")
-        self.btn_standard = ModernButton(sidebar, text="Estándar", width=220, height=35, bg_color="#333333", text_color="white", command=lambda: self.apply_preset("standard"))
-        self.btn_standard.pack(pady=5)
-        self.btn_minimal = ModernButton(sidebar, text="Minimal", width=220, height=35, bg_color="#333333", text_color="white", command=lambda: self.apply_preset("minimal"))
-        self.btn_minimal.pack(pady=5)
-        self.btn_clear = ModernButton(sidebar, text="Limpiar Todo", width=220, height=35, bg_color="#333333", text_color="white", command=lambda: self.apply_preset("clear"))
-        self.btn_clear.pack(pady=5)
+        ttk.Label(sidebar, text="PRESETS RÁPIDOS", font=("Segoe UI", 9, "bold"), foreground=COLORS["text_sec"], background=COLORS["bg_panel"]).pack(pady=(30, 15), padx=30, anchor="w")
+        
+        self.btn_standard = ModernButton(sidebar, text="Estándar", width=220, height=45, bg_color="#262626", text_color="white", command=lambda: self.apply_preset("standard"))
+        self.btn_standard.pack(pady=8)
+        
+        self.btn_minimal = ModernButton(sidebar, text="Minimal", width=220, height=45, bg_color="#262626", text_color="white", command=lambda: self.apply_preset("minimal"))
+        self.btn_minimal.pack(pady=8)
+        
+        self.btn_clear = ModernButton(sidebar, text="Limpiar Todo", width=220, height=45, bg_color="#262626", text_color="white", command=lambda: self.apply_preset("clear"))
+        self.btn_clear.pack(pady=8)
 
-        ttk.Separator(sidebar, orient="horizontal").pack(fill="x", pady=20, padx=20)
+        # Separator (Visual only)
+        tk.Frame(sidebar, height=1, bg=COLORS["border"]).pack(fill="x", pady=30, padx=30)
         
         # Info Panel
-        self.info_panel = tk.Text(sidebar, height=12, width=25, bg=COLORS["bg_panel"], fg=COLORS["text_sec"], font=FONTS["small"], relief="flat", wrap="word")
-        self.info_panel.pack(fill="both", expand=True, padx=20, pady=10)
-        self.info_panel.insert("1.0", "Pasa el mouse sobre una opción para ver detalles.")
+        ttk.Label(sidebar, text="INFORMACIÓN", font=("Segoe UI", 9, "bold"), foreground=COLORS["text_sec"], background=COLORS["bg_panel"]).pack(pady=(0, 10), padx=30, anchor="w")
+        self.info_panel = tk.Text(sidebar, height=10, width=25, bg=COLORS["bg_panel"], fg=COLORS["text_sec"], font=FONTS["small"], relief="flat", wrap="word", highlightthickness=0)
+        self.info_panel.pack(fill="both", expand=True, padx=30, pady=(0, 20))
+        self.info_panel.insert("1.0", "Pasa el mouse sobre una opción para ver detalles técnicos.")
         self.info_panel.config(state="disabled")
 
         # Área de Contenido Principal
         content_area = ttk.Frame(main_container, style="Main.TFrame")
-        content_area.pack(side="left", fill="both", expand=True, padx=20, pady=20)
+        content_area.pack(side="left", fill="both", expand=True, padx=0, pady=0)
 
         # Encabezado
         header_frame = ttk.Frame(content_area, style="Main.TFrame")
-        header_frame.pack(fill="x", pady=(0, 20))
+        header_frame.pack(fill="x", pady=(40, 20), padx=40)
         
-        # Tabs simulados
-        tabs_frame = ttk.Frame(header_frame, style="Main.TFrame")
-        tabs_frame.pack(side="left")
-        ttk.Label(tabs_frame, text="Tweaks", font=FONTS["subheader"], foreground=COLORS["text_main"], background=COLORS["bg_dark"]).pack(side="left", padx=(0, 20))
-        ttk.Label(tabs_frame, text="Config", font=FONTS["subheader"], foreground=COLORS["text_sec"], background=COLORS["bg_dark"]).pack(side="left", padx=20)
-
+        ttk.Label(header_frame, text="Panel de Control", font=FONTS["header"], foreground=COLORS["text_main"], background=COLORS["bg_dark"]).pack(side="left")
+        
         # Grid de Contenido (Canvas Scrolleable)
-        self.canvas = tk.Canvas(content_area, bg=COLORS["bg_panel"], highlightthickness=0)
-        self.scrollbar = ttk.Scrollbar(content_area, orient="vertical", command=self.canvas.yview)
-        self.scrollable_frame = ttk.Frame(self.canvas, style="TFrame")
+        canvas_container = ttk.Frame(content_area, style="Main.TFrame")
+        canvas_container.pack(fill="both", expand=True, padx=40, pady=(0, 20))
+        
+        self.canvas = tk.Canvas(canvas_container, bg=COLORS["bg_dark"], highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(canvas_container, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.canvas, style="Main.TFrame")
 
         self.scrollable_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
@@ -312,19 +368,22 @@ class DrVichoApp:
         self.scrollbar.pack(side="right", fill="y")
 
         # Barra Inferior
-        action_bar = ttk.Frame(self.root, style="Sidebar.TFrame", height=80)
+        action_bar = ttk.Frame(self.root, style="Sidebar.TFrame", height=90)
         action_bar.pack(side="bottom", fill="x")
         action_bar.pack_propagate(False)
+        
+        # Border Top for Action Bar
+        tk.Frame(action_bar, height=1, bg=COLORS["border"]).pack(side="top", fill="x")
 
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(action_bar, variable=self.progress_var, maximum=100, length=400, mode='determinate')
-        self.progress_bar.pack(side="left", padx=20, pady=25)
+        self.progress_bar.pack(side="left", padx=40, pady=30)
         
-        self.status_label = ttk.Label(action_bar, text="Listo", font=FONTS["body"], foreground=COLORS["text_sec"])
-        self.status_label.pack(side="left", pady=25)
+        self.status_label = ttk.Label(action_bar, text="Listo para optimizar", font=FONTS["body"], foreground=COLORS["text_sec"])
+        self.status_label.pack(side="left", pady=30, padx=10)
 
-        self.btn_optimize = ModernButton(action_bar, text="APLICAR TWEAKS", width=200, height=50, command=self.start_optimization_flow)
-        self.btn_optimize.pack(side="right", padx=20, pady=15)
+        self.btn_optimize = ModernButton(action_bar, text="APLICAR CAMBIOS", width=240, height=50, command=self.start_optimization_flow)
+        self.btn_optimize.pack(side="right", padx=40, pady=20)
 
     def get_features(self):
         # Misma lista de features, pero añadimos el tipo 'toggle' para las de personalización
